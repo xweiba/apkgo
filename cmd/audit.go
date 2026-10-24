@@ -10,10 +10,12 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/KevinGong2013/apkgo/v4/pkg/apkgo"
+	"github.com/KevinGong2013/apkgo/v4/pkg/store"
 )
 
 var (
 	flagAuditStore    string
+	flagAuditSandbox  bool
 	flagAuditFile     string
 	flagAuditPackage  string
 	flagAuditWatch    bool
@@ -23,6 +25,7 @@ var (
 func init() {
 	rootCmd.AddCommand(auditCmd)
 	auditCmd.Flags().StringVarP(&flagAuditStore, "store", "s", "", "comma-separated store names (default: all configured)")
+	auditCmd.Flags().BoolVar(&flagAuditSandbox, "sandbox", false, "query sandbox-capable stores (vivo) against their sandbox gateways")
 	auditCmd.Flags().StringVarP(&flagAuditFile, "file", "f", "", "APK file (used to derive package name)")
 	auditCmd.Flags().StringVarP(&flagAuditPackage, "package", "p", "", "package name (overrides --file)")
 	auditCmd.Flags().BoolVar(&flagAuditWatch, "watch", false, "poll until every store's review resolves (or the global --timeout)")
@@ -56,6 +59,12 @@ withdrawn) or the global --timeout elapses.`,
 			Stores:  stores,
 			Package: flagAuditPackage,
 			APKFile: flagAuditFile,
+			Environment: func() store.Environment {
+				if flagAuditSandbox {
+					return store.EnvironmentSandbox
+				}
+				return store.EnvironmentProduction
+			}(),
 		}
 
 		// Single-shot: one query, structured result on stdout.

@@ -92,7 +92,11 @@ func checkListing(l *store.Listing, _ store.ImageInspector) []error {
 // status via the read-only app.query.details, independent of upload.
 func audit(ctx context.Context, cfg map[string]string, q store.AuditQuery) store.AuditResult {
 	res := store.AuditResult{Store: "vivo"}
-	s, err := New(cfg)
+	env := store.EnvironmentProduction
+	if cfg["environment"] == string(store.EnvironmentSandbox) {
+		env = store.EnvironmentSandbox
+	}
+	s, err := NewForEnvironment(cfg, env)
 	if err != nil {
 		res.Error = err.Error()
 		return res
@@ -107,6 +111,9 @@ func audit(ctx context.Context, cfg map[string]string, q store.AuditQuery) store
 		return res
 	}
 	res.State, res.Detail = mapVivoAuditState(int(app.Status))
+	if res.State == store.AuditRejected && strings.TrimSpace(string(app.UnPassReason)) != "" {
+		res.Detail = strings.TrimSpace(string(app.UnPassReason))
+	}
 	res.VersionName = app.VersionName
 	if vc, err := strconv.ParseInt(strings.TrimSpace(app.VersionCode), 10, 32); err == nil {
 		res.VersionCode = int32(vc)
@@ -700,11 +707,12 @@ func (n *lenientInt) UnmarshalJSON(b []byte) error {
 // vivo returns more (app name in zh, online state, etc.) but we only
 // surface what the doctor / audit / listing paths report.
 type appDetails struct {
-	PackageName string     `json:"packageName"`
-	AppName     string     `json:"appName"`
-	VersionName string     `json:"versionName"`
-	VersionCode string     `json:"versionCode"`
-	Status      lenientInt `json:"status"` // 审核状态: 1草稿/2待审核/3通过/4不通过/5撤销
+	PackageName  string     `json:"packageName"`
+	AppName      string     `json:"appName"`
+	VersionName  string     `json:"versionName"`
+	VersionCode  string     `json:"versionCode"`
+	Status       lenientInt `json:"status"`       // 审核状态: 1草稿/2待审核/3通过/4不通过/5撤销
+	UnPassReason string     `json:"unPassReason"` // 审核不通过原因(status=4)
 
 	// Listing (商店资料), read by `apkgo listing`.
 	SimpleDesc string `json:"simpleDesc"` // 一句话简介

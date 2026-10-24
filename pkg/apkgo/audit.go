@@ -29,6 +29,10 @@ type AuditJob struct {
 	// Package is the app to look up. Required unless APKFile is set.
 	Package string
 
+	// Environment routes sandbox-capable stores (vivo) to their sandbox
+	// gateways for the audit queries. Zero value means production.
+	Environment store.Environment
+
 	// APKFile is an alternative source for Package: when set and Package
 	// is empty, the APK is parsed (URL fetch supported via FetchHeaders)
 	// and its package name + version are used.
@@ -130,6 +134,10 @@ func QueryAudit(ctx context.Context, job AuditJob) (*AuditReport, error) {
 	out := &AuditReport{Package: q.Package}
 	for _, name := range names {
 		scfg := cleanStoreCfg(job.Config.Stores[name])
+		if job.Environment == store.EnvironmentSandbox {
+			// 让支持沙箱的商店(如 vivo)在 audit 时也路由沙箱网关
+			scfg["environment"] = string(store.EnvironmentSandbox)
+		}
 		// "type.instance" naming (e.g. script.cdn): the auditor is keyed
 		// by the type prefix, not the instance name.
 		key := name
