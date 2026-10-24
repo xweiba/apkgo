@@ -48,9 +48,8 @@ func init() {
 			Brief: store.TextSpec{Min: 10, Max: 32, Unit: store.UnitWidth},
 			// detailDesc: 50–1000 个字符.
 			Description: store.TextSpec{Min: 50, Max: 1000},
-			// 长等于宽, 256*256–512*512. 文档(doc/329)写 png/≤500KB，但 app.upload.icon
-			// 实测执行 ≤50KB(错误码 13006)且接受 jpeg——以接口行为为准。
-			Icon: store.ImageSpec{Formats: []string{"png", "jpeg"}, Square: true, MinEdge: 256, MaxEdge: 512, MaxBytes: 50 << 10},
+			// png, 长等于宽, 256*256–512*512, ≤500KB.
+			Icon: store.ImageSpec{Formats: []string{"png"}, Square: true, MinEdge: 256, MaxEdge: 512, MaxBytes: 500 << 10},
 			// 竖图 1080*1920, jpg/png, ≤2MB each.
 			Screenshot:     store.ImageSpec{Formats: []string{"png", "jpeg"}, Sizes: []store.Size{{Width: 1080, Height: 1920}}, MaxBytes: 2 << 20},
 			MinScreenshots: 3,
