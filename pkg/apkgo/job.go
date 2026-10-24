@@ -51,6 +51,28 @@ type Job struct {
 	// cleaned up automatically.
 	APKFile string
 
+	// PackageName / VersionCode override APK metadata extraction: when
+	// both are set the APK is NOT parsed locally (callers that already
+	// parsed it — e.g. an admin server — pass the stored values in).
+	// Fields only extraction could provide (version_name, app_name) stay
+	// empty.
+	PackageName string
+	VersionCode int32
+
+	// SkipLocalCopy skips fetching a URL APKFile to a temp file. Only
+	// valid with the metadata override above and when every selected
+	// store supports URL push (huawei/honor/vivo); byte-upload stores
+	// would need the local copy.
+	SkipLocalCopy bool
+
+	// FileMD5 / FileSHA256 / FileSize are caller-known package facts
+	// (store.FileFacts). With them stores like vivo can run URL push
+	// without ever opening the package; without SkipLocalCopy they also
+	// spare the re-hash of a big local file.
+	FileMD5    string
+	FileSHA256 string
+	FileSize   int64
+
 	// APKFile64 is the optional 64-bit APK for split-arch uploads
 	// (xiaomi, vivo, tencent support split). Same path/URL semantics
 	// as APKFile.
@@ -183,16 +205,36 @@ func Run(ctx context.Context, job Job) (*Result, error) {
 		ctx = ctxlog.With(ctx, job.Logger)
 	}
 
-	// Resolve URL inputs to local paths.
-	paths, cleanup, err := httpx.FetchToTempBatch(ctx, []string{job.APKFile, job.APKFile64}, job.FetchHeaders)
-	if err != nil {
-		return nil, fmt.Errorf("fetch apk: %w", err)
+	// Metadata override (PackageName+VersionCode): skip APK parsing and,
+	// with SkipLocalCopy, skip fetching a URL to a temp file too (only
+	// URL-push stores may be selected in that case — enforced below once
+	// the store set is known).
+	metadataOverride := job.PackageName != "" && job.VersionCode != 0
+	if (job.PackageName != "" || job.VersionCode != 0) && !metadataOverride {
+		return nil, fmt.Errorf("package metadata override requires both package_name and version_code")
 	}
-	defer cleanup()
-	apkPath, apk64Path := paths[0], paths[1]
+	if job.SkipLocalCopy && !metadataOverride {
+		return nil, fmt.Errorf("--no-fetch requires the package metadata override (--package/--version-code)")
+	}
+	skipFetch := metadataOverride && job.SkipLocalCopy && httpx.IsURL(job.APKFile) && job.APKFile64 == ""
 
-	if _, err := os.Stat(apkPath); err != nil {
-		return nil, fmt.Errorf("apk file: %w", err)
+	var apkPath, apk64Path string
+	if skipFetch {
+		apkPath = job.APKFile
+	} else {
+		// Resolve URL inputs to local paths.
+		paths, cleanup, ferr := httpx.FetchToTempBatch(ctx, []string{job.APKFile, job.APKFile64}, job.FetchHeaders)
+		if ferr != nil {
+			return nil, fmt.Errorf("fetch apk: %w", ferr)
+		}
+		defer cleanup()
+		apkPath, apk64Path = paths[0], paths[1]
+	}
+
+	if !httpx.IsURL(apkPath) {
+		if _, err := os.Stat(apkPath); err != nil {
+			return nil, fmt.Errorf("apk file: %w", err)
+		}
 	}
 	if apk64Path != "" {
 		if _, err := os.Stat(apk64Path); err != nil {
@@ -219,6 +261,8 @@ func Run(ctx context.Context, job Job) (*Result, error) {
 
 	var info *apk.Info
 	switch {
+	case metadataOverride:
+		info = &apk.Info{Platform: store.PlatformAndroid, PackageName: job.PackageName, VersionCode: job.VersionCode}
 	case isAAB:
 		info = &apk.Info{}
 	case isHarmony:
@@ -319,6 +363,9 @@ func Run(ctx context.Context, job Job) (*Result, error) {
 		listings[i] = listingByStore[swh.ConfigName]
 		if job.Sandbox && !sandboxCapable[i] {
 			continue
+		}
+		if skipFetch && !store.SupportsURLPush(swh.ConfigName) {
+			return nil, fmt.Errorf("store %s needs the APK bytes; --no-fetch with a URL input only works for URL-push stores (huawei/honor/vivo)", name)
 		}
 		entry := uploader.StoreEntry{
 			Store:   swh.Store,
@@ -439,6 +486,9 @@ func Run(ctx context.Context, job Job) (*Result, error) {
 		ReleaseTime:  releaseTime,
 		SourceURL:    sourceURL,
 		Source64URL:  source64URL,
+	}
+	if job.FileMD5 != "" || job.FileSHA256 != "" || job.FileSize > 0 {
+		req.FileFacts = &store.FileFacts{MD5: job.FileMD5, SHA256: job.FileSHA256, Size: job.FileSize}
 	}
 
 	hookEnv := map[string]string{

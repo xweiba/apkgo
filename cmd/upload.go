@@ -22,6 +22,12 @@ import (
 var (
 	flagFile           string
 	flagFile64         string
+	flagPackage        string
+	flagVersionCode    int32
+	flagNoFetch        bool
+	flagMD5            string
+	flagSHA256         string
+	flagSize           int64
 	flagStore          string
 	flagNotes          string
 	flagNotesFile      string
@@ -36,6 +42,12 @@ var (
 func init() {
 	uploadCmd.Flags().StringVarP(&flagFile, "file", "f", "", "APK, AAB or HarmonyOS .app file path or http(s) URL (required; .aab is googleplay-only, .app is harmony-only)")
 	uploadCmd.Flags().StringVar(&flagFile64, "file64", "", "64-bit APK file path or http(s) URL (for split-arch uploads)")
+	uploadCmd.Flags().StringVar(&flagPackage, "package", "", "package name override; with --version-code skips local APK parsing (caller already parsed it)")
+	uploadCmd.Flags().Int32Var(&flagVersionCode, "version-code", 0, "versionCode override; with --package skips local APK parsing")
+	uploadCmd.Flags().BoolVar(&flagNoFetch, "no-fetch", false, "with a URL --file and the metadata override, skip downloading a local copy (URL-push stores only)")
+	uploadCmd.Flags().StringVar(&flagMD5, "md5", "", "caller-known APK MD5 (hex); stores use it instead of hashing the file")
+	uploadCmd.Flags().StringVar(&flagSHA256, "sha256", "", "caller-known APK SHA-256 (hex)")
+	uploadCmd.Flags().Int64Var(&flagSize, "size", 0, "caller-known APK size in bytes")
 	uploadCmd.Flags().StringVarP(&flagStore, "store", "s", "", "comma-separated store names (default: all configured)")
 	uploadCmd.Flags().StringVarP(&flagNotes, "notes", "n", "", "release notes (text)")
 	uploadCmd.Flags().StringVar(&flagNotesFile, "notes-file", "", "read release notes from file (overrides --notes)")
@@ -113,19 +125,25 @@ var uploadCmd = &cobra.Command{
 		}
 
 		result, err := apkgo.Run(cmd.Context(), apkgo.Job{
-			APKFile:      flagFile,
-			APKFile64:    flagFile64,
-			Stores:       stores,
-			Notes:        flagNotes,
-			NotesFile:    flagNotesFile,
-			ReleaseTime:  releaseTime,
-			ListingFile:  flagListing,
-			Config:       cfg,
-			FetchHeaders: fetchHeaders,
-			Progress:     pm,
-			Timeout:      flagTimeout,
-			DryRun:       flagDryRun,
-			Sandbox:      flagSandbox,
+			APKFile:       flagFile,
+			APKFile64:     flagFile64,
+			PackageName:   flagPackage,
+			VersionCode:   flagVersionCode,
+			SkipLocalCopy: flagNoFetch,
+			FileMD5:       flagMD5,
+			FileSHA256:    flagSHA256,
+			FileSize:      flagSize,
+			Stores:        stores,
+			Notes:         flagNotes,
+			NotesFile:     flagNotesFile,
+			ReleaseTime:   releaseTime,
+			ListingFile:   flagListing,
+			Config:        cfg,
+			FetchHeaders:  fetchHeaders,
+			Progress:      pm,
+			Timeout:       flagTimeout,
+			DryRun:        flagDryRun,
+			Sandbox:       flagSandbox,
 		})
 		if err != nil {
 			return err
